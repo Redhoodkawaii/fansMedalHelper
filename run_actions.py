@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-TARGET_UID = ""  # Set the single streamer UID before running.
+TARGET_UID = "243265104"  # Streamer for https://live.bilibili.com/7222865
 
 
 def run():
