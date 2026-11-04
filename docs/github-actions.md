@@ -1,6 +1,6 @@
 # GitHub Actions 每日运行
 
-工作流每天约北京时间／新加坡时间 09:17 启动，也可在 Actions → Daily Fans Medal Helper → Run workflow 手动启动。电脑关机不影响 GitHub 云端任务。
+工作流每天约北京时间／新加坡时间 19:37 启动，也可在 Actions → Daily Fans Medal Helper → Run workflow 手动启动。电脑关机不影响 GitHub 云端任务。
 
 ## 仅有一个必需的 Secret
 
