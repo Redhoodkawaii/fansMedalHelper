@@ -1,20 +1,17 @@
-# .github/workflows/sync.yml
-name: Sync Fork
+name: Sync Fork (manual only)
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-  schedule:
-    - cron: '0 * * * *' # 每小时 0分触发, 对于一些更新不那么频繁的项目可以设置为每天一次, 低碳一点
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   repo-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: TG908/fork-sync@v1.1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }} # 这个 token action 会默认配置, 这里只需这样写就行
-          owner: XiaoMiku01 # fork 上游项目 owner
-          head: master # fork 上游项目需要同步的分支
-          base: master # 需要同步到本项目的目标分支
+      - name: Sync the immediate upstream after review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh repo sync Redhoodkawaii/fansMedalHelper --source xiaofeiTM233/fansMedalHelper --branch master
