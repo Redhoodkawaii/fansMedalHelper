@@ -7,7 +7,13 @@ import sys
 from pathlib import Path
 
 
+TARGET_UID = ""  # Set the single streamer UID before running.
+
+
 def run():
+    if not TARGET_UID.isascii() or not TARGET_UID.isdecimal() or int(TARGET_UID) <= 0:
+        print("A single streamer TARGET_UID must be configured before running.")
+        return 1
     key = os.environ.pop("BILI_ACCESS_KEY", "").strip()
     if not key or any(c.isspace() for c in key):
         print("Missing or invalid BILI_ACCESS_KEY repository secret.")
@@ -22,7 +28,7 @@ def run():
                       WATCHINGLIVE=30, WATCHINGLIVE_CD=60,
                       LIKE_COUNT=0, DANMAKU_COUNT=1, DANMAKU_CD=60,
                       SIGNINGROUP_CD=-1, CUSTOMSIGNIN_CD=-1, WEARMEDAL=0)
-        config["USERS"] = [{"access_key": key, "white_uid": 0, "banned_uid": 0}]
+        config["USERS"] = [{"access_key": key, "white_uid": TARGET_UID, "banned_uid": 0}]
         os.environ["USERS"] = json.dumps(config)
         # Import installs the project's verbose logger. Suppress all output here.
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
