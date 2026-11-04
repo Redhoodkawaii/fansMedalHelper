@@ -87,6 +87,9 @@ def run():
             BiliApi._BiliApi__get = instrument(BiliApi._BiliApi__get)
             BiliApi._BiliApi__post = instrument(BiliApi._BiliApi__post)
 
+            async def skip_legacy_sign_in(self):
+                report("Legacy live sign-in disabled: retired endpoint.")
+            main.BiliUser.doSign = skip_legacy_sign_in
             main.run()
         os.environ.pop("USERS", None)
     except BaseException:
