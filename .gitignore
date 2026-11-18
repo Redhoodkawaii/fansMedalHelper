@@ -16,3 +16,6 @@ venv/
 *.json
 /logs
 *.log
+
+/daily-reports/
+/medal-snapshot.json

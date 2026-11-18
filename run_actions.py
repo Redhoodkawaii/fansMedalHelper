@@ -1,107 +1,66 @@
-"""Single run for Actions; never emit original account/API logs."""
-import contextlib
-import io
+"""Produce a single daily fans medal report from offline data."""
+import argparse
 import json
-import os
 import sys
+from datetime import date, datetime, timedelta, timezone
+from tempfile import NamedTemporaryFile
 from pathlib import Path
 
 
-TARGET_UID = "243265104"  # Streamer for https://live.bilibili.com/7222865
+CHINA_TIME = timezone(timedelta(hours=8))
+DEMO = {"level": 12, "intimacy": 830, "watch_minutes": 15}
+FIELDS = {"level", "intimacy", "watch_minutes"}
 
 
-def run():
-    if not TARGET_UID.isascii() or not TARGET_UID.isdecimal() or int(TARGET_UID) <= 0:
-        print("A single streamer TARGET_UID must be configured before running.")
-        return 1
-    key = os.environ.pop("BILI_ACCESS_KEY", "").strip()
-    if not key or any(c.isspace() for c in key):
-        print("Missing or invalid BILI_ACCESS_KEY repository secret.")
-        return 1
-    public_output = sys.stdout
-    failed = []
+def report(snapshot, day, source):
+    if type(snapshot) is not dict or set(snapshot) != FIELDS:
+        raise ValueError
+    level, intimacy, minutes = (snapshot[key] for key in ("level", "intimacy", "watch_minutes"))
+    if type(level) is not int or not 1 <= level <= 120:
+        raise ValueError
+    if type(intimacy) is not int or intimacy < 0:
+        raise ValueError
+    if minutes is not None and (type(minutes) is not int or minutes < 0):
+        raise ValueError
+    return {
+        "date": day,
+        "source": source,
+        "level": level,
+        "intimacy": intimacy,
+        "watch_minutes": minutes,
+        "watch_base_points_estimate": None if minutes is None else min(minutes // 5, 5) * 6,
+        "platform_operations": 0,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--date", type=date.fromisoformat)
+    parser.add_argument("--snapshot", type=Path)
+    parser.add_argument("--output-dir", type=Path, default=Path("daily-reports"))
+    args = parser.parse_args()
+    day = (args.date or datetime.now(CHINA_TIME).date()).isoformat()
+    source = "manual" if args.snapshot is not None else "mock"
     try:
-        import yaml
-        from loguru import logger
-        config = yaml.safe_load(Path(__file__).with_name("users.example.yaml").read_text())
-        config.update(CRON=None, CRON_INDEX=0, STOPWATCHINGTIME=4500,
-                      SENDKEY=None, MOREPUSH=None, PROXY=None,
-                      WATCHINGLIVE=30, WATCHINGLIVE_CD=60,
-                      LIKE_COUNT=0, DANMAKU_COUNT=1, DANMAKU_CD=60,
-                      SIGNINGROUP_CD=-1, CUSTOMSIGNIN_CD=-1, WEARMEDAL=0)
-        config["USERS"] = [{"access_key": key, "white_uid": TARGET_UID, "banned_uid": 0}]
-        os.environ["USERS"] = json.dumps(config)
-        # Import installs the project's verbose logger. Suppress all output here.
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            import main
-            logger.remove()
-            def collect(message):
-                if message.record["level"].no >= 40:
-                    failed.append(True)
-            logger.add(collect, level="ERROR", backtrace=False, diagnose=False)
-
-            from src.api import BiliApi, BiliApiError
-            import asyncio
-            from aiohttp import ClientResponseError, ClientConnectionError
-            from urllib.parse import urlsplit
-            output = public_output
-            def report(text):
-                print(text, file=output, flush=True)
-            endpoints = {
-                "/x/v2/account/mine": "login",
-                "/rc/v1/Sign/doSign": "legacy-sign-in",
-                "/xlive/app-ucenter/v1/user/get_user_info": "user-info",
-                "/xlive/app-ucenter/v1/fansMedal/panel": "medal-list",
-                "/xlive/app-ucenter/v1/fansMedal/fans_medal_info": "medal-info",
-                "/xlive/app-room/v1/dM/sendmsg": "danmaku",
-                "/xlive/data-interface/v1/heartbeat/mobileHeartBeat": "watching",
-            }
-            def instrument(original):
-                async def request(self, *args, **kwargs):
-                    label = endpoints.get(urlsplit(args[0]).path, "other-bilibili-api")
-                    try:
-                        value = await original(self, *args, **kwargs)
-                    except BiliApiError as exc:
-                        code = exc.code if type(exc.code) is int else 0
-                        report("API error: " + label + "; code=" + str(code))
-                        raise
-                    except ClientResponseError as exc:
-                        status = exc.status if type(exc.status) is int else 0
-                        report("HTTP error: " + label + "; status=" + str(status))
-                        raise
-                    except (asyncio.TimeoutError, TimeoutError):
-                        report("Network timeout: " + label)
-                        raise
-                    except ClientConnectionError:
-                        report("Network connection failed: " + label)
-                        raise
-                    except Exception:
-                        report("Unexpected response or program error: " + label)
-                        raise
-                    if label == "login":
-                        report("Login verification response received.")
-                    elif label == "legacy-sign-in":
-                        report("Legacy sign-in completed.")
-                    return value
-                return request
-            BiliApi._BiliApi__get = instrument(BiliApi._BiliApi__get)
-            BiliApi._BiliApi__post = instrument(BiliApi._BiliApi__post)
-
-            async def skip_legacy_sign_in(self):
-                report("Legacy live sign-in disabled: retired endpoint.")
-            main.BiliUser.doSign = skip_legacy_sign_in
-            main.run()
-        os.environ.pop("USERS", None)
-    except BaseException:
-        os.environ.pop("USERS", None)
-        print("Run failed. Raw account/API details were withheld for privacy.")
+        snapshot = json.loads(args.snapshot.read_text(encoding="utf-8")) if args.snapshot else DEMO
+        result = report(snapshot, day, source)
+        args.output_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = args.output_dir / f"{source}-{day}.json"
+        # Publish the complete file atomically without replacing an existing report.
+        with NamedTemporaryFile(dir=args.output_dir, mode="w", encoding="utf-8") as output:
+            json.dump(result, output, indent=2)
+            output.write("\n")
+            output.flush()
+            path.hardlink_to(output.name)
+    except FileExistsError:
+        print("今日报告已存在，跳过。")
+        return 0
+    except (OSError, ValueError, RecursionError):
+        print("报告生成失败，请检查快照格式及输出目录。", file=sys.stderr)
         return 1
-    if failed:
-        print("Run reported errors; check credential validity or retry later. Raw details were withheld.")
-        return 1
-    print("Run completed without reported errors. Intimacy rewards are not independently verified.")
+    print(json.dumps(result) if source == "mock" else "已保存今日手动快照报告。")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(main())
