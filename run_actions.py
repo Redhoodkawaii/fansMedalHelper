@@ -8,27 +8,38 @@ from pathlib import Path
 
 
 CHINA_TIME = timezone(timedelta(hours=8))
-DEMO = {"level": 12, "intimacy": 830, "watch_minutes": 15}
-FIELDS = {"level", "intimacy", "watch_minutes"}
+DEMO = {"level": 12, "intimacy": 830, "watch_minutes": 45, "likes": 60, "danmaku": 4}
+TASK_UNITS = {"watch_minutes": 15, "likes": 30, "danmaku": 1}
+DAILY_TASK_CAP = 10
 
 
 def report(snapshot, day, source):
-    if type(snapshot) is not dict or set(snapshot) != FIELDS:
+    required = {"level", "intimacy", "watch_minutes"}
+    if type(snapshot) is not dict or not required <= snapshot.keys() <= required | TASK_UNITS.keys():
         raise ValueError
-    level, intimacy, minutes = (snapshot[key] for key in ("level", "intimacy", "watch_minutes"))
+    level, intimacy = snapshot["level"], snapshot["intimacy"]
     if type(level) is not int or not 1 <= level <= 120:
         raise ValueError
     if type(intimacy) is not int or intimacy < 0:
         raise ValueError
-    if minutes is not None and (type(minutes) is not int or minutes < 0):
-        raise ValueError
+
+    tasks = {}
+    for field, units_per_point in TASK_UNITS.items():
+        count = snapshot.get(field)
+        if count is not None and (type(count) is not int or count < 0):
+            raise ValueError
+        tasks[field] = {
+            "count": count,
+            "units_per_point": units_per_point,
+            "daily_points_cap": DAILY_TASK_CAP,
+            "points_estimate": None if count is None else min(count // units_per_point, DAILY_TASK_CAP),
+        }
     return {
         "date": day,
         "source": source,
         "level": level,
         "intimacy": intimacy,
-        "watch_minutes": minutes,
-        "watch_base_points_estimate": None if minutes is None else min(minutes // 5, 5) * 6,
+        "tasks": tasks,
         "platform_operations": 0,
     }
 

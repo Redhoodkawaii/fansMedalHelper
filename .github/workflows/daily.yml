@@ -35,7 +35,7 @@ jobs:
         uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: daily-reports
-          key: medal-mock-v1-${{ steps.day.outputs.value }}
+          key: medal-mock-v2-${{ steps.day.outputs.value }}
           lookup-only: true
       - name: Generate simulated daily report
         if: steps.daily-cache.outputs.cache-hit != 'true'
@@ -47,7 +47,7 @@ jobs:
         uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: daily-reports
-          key: medal-mock-v1-${{ steps.day.outputs.value }}
+          key: medal-mock-v2-${{ steps.day.outputs.value }}
       - name: Log duplicate run
         if: steps.daily-cache.outputs.cache-hit == 'true'
         run: echo "今日模拟报告已生成，跳过。"
